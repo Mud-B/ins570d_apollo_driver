@@ -121,15 +121,11 @@ void DataParser::ParseRawData(const std::string &msg) {
   }
 
   data_parser_->Update(msg);
-  Parser::MessageType type;
   MessagePtr msg_ptr;
 
   while (cyber::OK()) {
-    type = data_parser_->GetMessage(&msg_ptr);
-    if (type == Parser::MessageType::NONE) {
-      break;
-    }
-    DispatchMessage(type, msg_ptr);
+    data_parser_->GetMessage();
+    DispatchMessage(msg_ptr);
   }
 }
 
@@ -176,47 +172,21 @@ void DataParser::CheckGnssStatus(::apollo::drivers::gnss::Gnss *gnss) {
   gnssstatus_writer_->Write(gnss_status_);
 }
 
-void DataParser::DispatchMessage(Parser::MessageType type, MessagePtr message) {
-  switch (type) {
-    case Parser::MessageType::GNSS:
-      CheckGnssStatus(As<::apollo::drivers::gnss::Gnss>(message));
-      break;
-
-    case Parser::MessageType::BEST_GNSS_POS:
-      PublishBestpos(message);
-      break;
-
-    case Parser::MessageType::IMU:
-      PublishImu(message);
-      break;
-
-    case Parser::MessageType::INS:
-      CheckInsStatus(As<::apollo::drivers::gnss::Ins>(message));
-      PublishCorrimu(message);
-      PublishOdometry(message);
-      break;
-
-    case Parser::MessageType::INS_STAT:
-      PublishInsStat(message);
-      break;
-
-    case Parser::MessageType::BDSEPHEMERIDES:
-    case Parser::MessageType::GPSEPHEMERIDES:
-    case Parser::MessageType::GLOEPHEMERIDES:
-      PublishEphemeris(message);
-      break;
-
-    case Parser::MessageType::OBSERVATION:
-      PublishObservation(message);
-      break;
-
-    case Parser::MessageType::HEADING:
-      PublishHeading(message);
-      break;
-
-    default:
-      break;
-  }
+void DataParser::DispatchMessage(MessagePtr message) {
+  message = &gnss_;
+  CheckGnssStatus(As<::apollo::drivers::gnss::Gnss>(message));
+  message = &bestpos_;
+  PublishBestpos(message);
+  message = &imu_;
+  PublishImu(message);
+  message = &ins_;
+  CheckInsStatus(As<::apollo::drivers::gnss::Ins>(message));
+  PublishCorrimu(message);
+  PublishOdometry(message);
+  message = &ins_stat_;
+  PublishInsStat(message);
+  message = &heading_;
+  PublishHeading(message);
 }
 
 void DataParser::PublishInsStat(const MessagePtr message) {

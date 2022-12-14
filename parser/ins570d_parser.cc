@@ -28,12 +28,6 @@
 
 #include "modules/drivers/gnss/parser/ins570d_messages.h"
 #include "modules/drivers/gnss/parser/parser.h"
-// #include "modules/drivers/gnss/proto/gnss.pb.h"
-// #include "modules/drivers/gnss/proto/gnss_best_pose.pb.h"
-// #include "modules/drivers/gnss/proto/gnss_raw_observation.pb.h"
-// #include "modules/drivers/gnss/proto/heading.pb.h"
-// #include "modules/drivers/gnss/proto/imu.pb.h"
-// #include "modules/drivers/gnss/proto/ins.pb.h"
 #include "modules/drivers/gnss/util/time_conversion.h"
 
 namespace apollo {
@@ -86,7 +80,7 @@ class Ins570dParser : public Parser {
   Ins570dParser();
   explicit Ins570dParser(const config::Config& config);
 
-  virtual MessageType GetMessage(MessagePtr* message_ptr);
+  virtual void GetMessage();
 
   // 从字节流中截取片段（代表某个物理量的值）
   template<class T>
@@ -137,7 +131,7 @@ class Ins570dParser : public Parser {
   void getWHEELSPEEDSTATUS(Ins570d::INS_STATUS& tmp_);
 
 
-  Parser::MessageType PrepareMessage(MessagePtr* message_ptr);
+  void PrepareMessage();
 
   // The handle_xxx functions return whether a message is ready.
   bool HandleBestPos();
@@ -146,7 +140,7 @@ class Ins570dParser : public Parser {
 
   bool HandleBestVel(const Ins570d::BestVel* vel);
 
-  bool HandleCorrImuData(const Ins570d::CorrImuData* imu);
+  bool HandleCorrImuData();
 
   bool HandleInsCov(const Ins570d::InsCov* cov);
 
@@ -177,12 +171,11 @@ class Ins570dParser : public Parser {
 
   double imu_measurement_time_previous_ = -1.0;
 
-  Ins570d::INS_STATUS middle_status;
-
   std::vector<uint8_t> buffer_;
   size_t total_length_ = 63;
 
   std::vector<uint32_t> dummy_array_;
+  Ins570d::INS_STATUS ins570d_data_;
 
   config::ImuType imu_type_ = config::ImuType::ADIS16488;
 
@@ -224,9 +217,9 @@ Ins570dParser::Ins570dParser(const config::Config& config) {
   }
 }
 
-Parser::MessageType Ins570dParser::GetMessage(MessagePtr* message_ptr) {
+void Ins570dParser::GetMessage() {
   if (data_ == nullptr) {
-    return MessageType::NONE;
+    return;
   }
 
   while (data_ < data_end_) {
@@ -249,13 +242,11 @@ Parser::MessageType Ins570dParser::GetMessage(MessagePtr* message_ptr) {
         buffer_.push_back(*data_++);
         continue;
       }
-      MessageType type = PrepareMessage(message_ptr);
+      PrepareMessage();
       buffer_.clear();
-      if (type != MessageType::NONE)
-        return type;
     }
   }
-  return MessageType::NONE;
+  return ;
 }
 
 bool Ins570dParser::check_sum() {
@@ -265,21 +256,20 @@ bool Ins570dParser::check_sum() {
   return (checksum_ == buffer_.back());
 }
 
-Parser::MessageType Ins570dParser::PrepareMessage(MessagePtr* message_ptr) {
+void Ins570dParser::PrepareMessage() {
   if (!check_sum()) {
     AERROR << "CRC check failed.";
-    return MessageType::NONE;
+    return ;
   }
-  
+  // split raw data
   dummy_array_.clear();
   std::vector<uint32_t> dummy_array(27);
-  for (int i=0;i<27;i++) {
-      dummy_array[i]=getOneValue<uint32_t>(Ins570d::config_[i][0], Ins570d::config_[i][1]);
-      //printf("%x\n",dummy_array[i]);
-  }
+  for (int i=0;i<27;i++)
+    dummy_array[i]=getOneValue<uint32_t>(Ins570d::config_[i][0], Ins570d::config_[i][1]);
   dummy_array_ = dummy_array;
-
-  Ins570d::INS_STATUS *tmp_=&(this->middle_status);
+  
+  // parse data
+  Ins570d::INS_STATUS *tmp_=&(this->ins570d_data_);
   getRPY(*tmp_);
   getGYRO(*tmp_);
   getACC(*tmp_);
@@ -287,77 +277,16 @@ Parser::MessageType Ins570dParser::PrepareMessage(MessagePtr* message_ptr) {
   getVEL(*tmp_);
   getALISTATUS(*tmp_);
   getLOOPDATA(*tmp_);
-  middle_status=*tmp_;
-  
-  middle_status.debugString();
+  ins570d_data_=*tmp_;
+  // debug
+  ins570d_data_.debugString();
 
-  uint8_t* message = nullptr;
-
-  std::vector<Ins570d::MessageId> msg_ids{
-            {Ins570d::BESTGNSSPOS},
-            {Ins570d::BESTPOS},
-            {Ins570d::CORRIMUDATA},
-            {Ins570d::RAWIMU},
-            {Ins570d::INSPVAX},
-            {Ins570d::HEADING}
-            };
-
-  static size_t index = 0;
-  if(index > msg_ids.size()-1)
-    index = 0;
-  Ins570d::MessageId message_id = msg_ids[index++];
-
-  switch (message_id) {
-    case Ins570d::BESTGNSSPOS:
-      if (HandleGnssBestpos()) {
-        *message_ptr = &bestpos_;
-        return MessageType::BEST_GNSS_POS;
-      }
-      break;
-
-    case Ins570d::BESTPOS:
-      if (HandleBestPos()) {
-        *message_ptr = &gnss_;
-        return MessageType::GNSS;
-      }
-      break;
-
-    case Ins570d::CORRIMUDATA:
-
-      if (HandleCorrImuData(reinterpret_cast<Ins570d::CorrImuData*>(message))) {
-        *message_ptr = &ins_;
-        return MessageType::INS;
-      }
-      break;
-
-    case Ins570d::RAWIMU:
-    case Ins570d::RAWIMUS:
-
-      if (HandleRawImu()) {
-        *message_ptr = &imu_;
-        return MessageType::IMU;
-      }
-      break;
-
-    case Ins570d::INSPVAX:
-
-      if (HandleInsPvax()) {
-        *message_ptr = &ins_stat_;
-        return MessageType::INS_STAT;
-      }
-      break;
-
-    case Ins570d::HEADING:
-      if (HandleHeading()) {
-        *message_ptr = &heading_;
-        return MessageType::HEADING;
-      }
-      break;
-
-    default:
-      break;
-  }
-  return MessageType::NONE;
+  HandleGnssBestpos();
+  HandleBestPos();
+  HandleCorrImuData();
+  HandleRawImu();
+  HandleInsPvax();
+  HandleHeading();
 }
 
 void Ins570dParser::getRPY(Ins570d::INS_STATUS& tmp_)
@@ -493,24 +422,24 @@ void Ins570dParser::getWHEELSPEEDSTATUS(Ins570d::INS_STATUS &tmp_)
 bool Ins570dParser::HandleGnssBestpos() {
   bestpos_.set_sol_status(SolutionStatus::SOL_COMPUTED);
   // bestpos_.set_sol_type(static_cast<apollo::drivers::gnss::SolutionType>
-  //                       (middle_status.fix_type));
+  //                       (ins570d_data_.fix_type));
   bestpos_.set_sol_type(SolutionType::NARROW_INT);
-  bestpos_.set_latitude(middle_status.latitude);
-  bestpos_.set_longitude(middle_status.longitude);
-  bestpos_.set_height_msl(middle_status.altitude);
+  bestpos_.set_latitude(ins570d_data_.latitude);
+  bestpos_.set_longitude(ins570d_data_.longitude);
+  bestpos_.set_height_msl(ins570d_data_.altitude);
   // bestpos_.set_undulation(pos->undulation);
   // bestpos_.set_datum_id(
   //     static_cast<apollo::drivers::gnss::DatumId>(pos->datum_id));
-  bestpos_.set_latitude_std_dev(middle_status.lat_std);
-  bestpos_.set_longitude_std_dev(middle_status.lon_std);
-  bestpos_.set_height_std_dev(middle_status.alti_std);
+  bestpos_.set_latitude_std_dev(ins570d_data_.lat_std);
+  bestpos_.set_longitude_std_dev(ins570d_data_.lon_std);
+  bestpos_.set_height_std_dev(ins570d_data_.alti_std);
   // bestpos_.set_base_station_id(pos->base_station_id);
   // bestpos_.set_differential_age(pos->differential_age);
   // bestpos_.set_solution_age(pos->solution_age);
-  bestpos_.set_num_sats_tracked(middle_status.satellites_num);
-  bestpos_.set_num_sats_in_solution(middle_status.satellites_num);
-  bestpos_.set_num_sats_l1(middle_status.satellites_num);
-  bestpos_.set_num_sats_multi(middle_status.satellites_num);
+  bestpos_.set_num_sats_tracked(ins570d_data_.satellites_num);
+  bestpos_.set_num_sats_in_solution(ins570d_data_.satellites_num);
+  bestpos_.set_num_sats_l1(ins570d_data_.satellites_num);
+  bestpos_.set_num_sats_multi(ins570d_data_.satellites_num);
   // bestpos_.set_extended_solution_status(pos->extended_solution_status);
   // bestpos_.set_galileo_beidou_used_mask(pos->galileo_beidou_used_mask);
   // bestpos_.set_gps_glonass_used_mask(pos->gps_glonass_used_mask);
@@ -522,16 +451,16 @@ bool Ins570dParser::HandleGnssBestpos() {
 }
 
 bool Ins570dParser::HandleBestPos() {
-  gnss_.mutable_position()->set_lon(middle_status.longitude);
-  gnss_.mutable_position()->set_lat(middle_status.latitude);
-  gnss_.mutable_position()->set_height(middle_status.altitude);
-  gnss_.mutable_position_std_dev()->set_x(middle_status.lon_std);
-  gnss_.mutable_position_std_dev()->set_y(middle_status.lat_std);
-  gnss_.mutable_position_std_dev()->set_z(middle_status.alti_std);
-  gnss_.set_num_sats(middle_status.satellites_num);
+  gnss_.mutable_position()->set_lon(ins570d_data_.longitude);
+  gnss_.mutable_position()->set_lat(ins570d_data_.latitude);
+  gnss_.mutable_position()->set_height(ins570d_data_.altitude);
+  gnss_.mutable_position_std_dev()->set_x(ins570d_data_.lon_std);
+  gnss_.mutable_position_std_dev()->set_y(ins570d_data_.lat_std);
+  gnss_.mutable_position_std_dev()->set_z(ins570d_data_.alti_std);
+  gnss_.set_num_sats(ins570d_data_.satellites_num);
   solution_status_ = Ins570d::SolutionStatus::SOL_COMPUTED;
-  if (position_type_ != middle_status.fix_type) {
-    position_type_ = middle_status.fix_type;
+  if (position_type_ != ins570d_data_.fix_type) {
+    position_type_ = ins570d_data_.fix_type;
     AINFO << "Position type: " << static_cast<int>(position_type_);
   }
   gnss_.set_solution_status(static_cast<uint32_t>(solution_status_));
@@ -622,23 +551,23 @@ bool Ins570dParser::HandleBestVel(const Ins570d::BestVel* vel) {
   return true;
 }
 
-bool Ins570dParser::HandleCorrImuData(const Ins570d::CorrImuData* imu) {
-  ins_.mutable_euler_angles()->set_x(middle_status.roll);
-  ins_.mutable_euler_angles()->set_y(-middle_status.pitch);
-  ins_.mutable_euler_angles()->set_z(middle_status.yaw);
-  ins_.mutable_position()->set_lon(middle_status.longitude);
-  ins_.mutable_position()->set_lat(middle_status.latitude);
-  ins_.mutable_position()->set_height(middle_status.altitude);
-  ins_.mutable_linear_velocity()->set_x(middle_status.vel_e);
-  ins_.mutable_linear_velocity()->set_y(middle_status.vel_n);
-  ins_.mutable_linear_velocity()->set_z(middle_status.vel_u);
-  rfu_to_flu(middle_status.acc_x,
-             middle_status.acc_y,
-             middle_status.acc_z,
+bool Ins570dParser::HandleCorrImuData() {
+  ins_.mutable_euler_angles()->set_x(ins570d_data_.roll);
+  ins_.mutable_euler_angles()->set_y(-ins570d_data_.pitch);
+  ins_.mutable_euler_angles()->set_z(ins570d_data_.yaw);
+  ins_.mutable_position()->set_lon(ins570d_data_.longitude);
+  ins_.mutable_position()->set_lat(ins570d_data_.latitude);
+  ins_.mutable_position()->set_height(ins570d_data_.altitude);
+  ins_.mutable_linear_velocity()->set_x(ins570d_data_.vel_e);
+  ins_.mutable_linear_velocity()->set_y(ins570d_data_.vel_n);
+  ins_.mutable_linear_velocity()->set_z(ins570d_data_.vel_u);
+  rfu_to_flu(ins570d_data_.acc_x,
+             ins570d_data_.acc_y,
+             ins570d_data_.acc_z,
              ins_.mutable_linear_acceleration());
-  rfu_to_flu(middle_status.gyro_x,
-             middle_status.gyro_y,
-             middle_status.gyro_z,
+  rfu_to_flu(ins570d_data_.gyro_x,
+             ins570d_data_.gyro_y,
+             ins570d_data_.gyro_z,
              ins_.mutable_angular_velocity());
 
   // ins_.set_position_covariance(
@@ -677,15 +606,15 @@ bool Ins570dParser::HandleInsPva(const Ins570d::InsPva* pva) {
     ins_status_ = pva->status;
     AINFO << "INS status: " << static_cast<int>(ins_status_);
   }
-  ins_.mutable_position()->set_lon(middle_status.longitude);
-  ins_.mutable_position()->set_lat(middle_status.latitude);
-  ins_.mutable_position()->set_height(middle_status.altitude);
+  ins_.mutable_position()->set_lon(ins570d_data_.longitude);
+  ins_.mutable_position()->set_lat(ins570d_data_.latitude);
+  ins_.mutable_position()->set_height(ins570d_data_.altitude);
   // ins_.mutable_euler_angles()->set_x(pva->roll * DEG_TO_RAD);
   // ins_.mutable_euler_angles()->set_y(-pva->pitch * DEG_TO_RAD);
   // ins_.mutable_euler_angles()->set_z(azimuth_deg_to_yaw_rad(pva->azimuth));
-  ins_.mutable_linear_velocity()->set_x(middle_status.vel_e);
-  ins_.mutable_linear_velocity()->set_y(middle_status.vel_n);
-  ins_.mutable_linear_velocity()->set_z(middle_status.vel_u);
+  ins_.mutable_linear_velocity()->set_x(ins570d_data_.vel_e);
+  ins_.mutable_linear_velocity()->set_y(ins570d_data_.vel_n);
+  ins_.mutable_linear_velocity()->set_z(ins570d_data_.vel_u);
 
   switch (pva->status) {
     case Ins570d::InsStatus::ALIGNMENT_COMPLETE:
@@ -786,13 +715,13 @@ bool Ins570dParser::HandleRawImu() {
   // double gyro_scale = 0.0;
   // double accel_scale = 0.0;
   // float imu_measurement_span = 1.0f / 200.0f;
-  rfu_to_flu(middle_status.acc_x,
-             middle_status.acc_y,
-             middle_status.acc_z,
+  rfu_to_flu(ins570d_data_.acc_x,
+             ins570d_data_.acc_y,
+             ins570d_data_.acc_z,
              imu_.mutable_linear_acceleration());
-  rfu_to_flu(middle_status.gyro_x,
-             middle_status.gyro_y,
-             middle_status.gyro_z,
+  rfu_to_flu(ins570d_data_.gyro_x,
+             ins570d_data_.gyro_y,
+             ins570d_data_.gyro_z,
              imu_.mutable_angular_velocity());
   return true;
 }
@@ -918,8 +847,8 @@ bool Ins570dParser::HandleHeading() {
   // heading_.set_solution_status(Ins570d::SolutionStatus::SOL_COMPUTED);
   heading_.set_position_type(SolutionType::NARROW_INT);
   // heading_.set_baseline_length(heading->length);
-  heading_.set_heading(middle_status.yaw);
-  heading_.set_pitch(middle_status.pitch);
+  heading_.set_heading(ins570d_data_.yaw);
+  heading_.set_pitch(ins570d_data_.pitch);
   // heading_.set_reserved(heading->reserved);
   // heading_.set_heading_std_dev(heading->heading_std_dev);
   // heading_.set_pitch_std_dev(heading->pitch_std_dev);

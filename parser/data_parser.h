@@ -52,7 +52,7 @@ class DataParser {
   void ParseRawData(const std::string &msg);
 
  private:
-  void DispatchMessage(Parser::MessageType type, MessagePtr message);
+  void DispatchMessage(MessagePtr message);
   void PublishInsStat(const MessagePtr message);
   void PublishOdometry(const MessagePtr message);
   void PublishCorrimu(const MessagePtr message);

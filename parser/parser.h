@@ -71,9 +71,6 @@ class Parser {
   // Return a pointer to a NovAtel parser. The caller should take ownership.
   static Parser *CreateIns570d(const config::Config &config);
 
-  // Return a pointer to rtcm v3 parser. The caller should take ownership.
-  static Parser *CreateRtcmV3(bool is_base_station = false);
-
   virtual ~Parser() {}
 
   // Updates the parser with new data. The caller must keep the data valid until
@@ -109,7 +106,7 @@ class Parser {
   // Gets a parsed protobuf message. The caller must consume the message before
   // calling another
   // GetMessage() or Update();
-  virtual MessageType GetMessage(MessagePtr *message_ptr) = 0;
+  virtual void GetMessage() = 0;
 
  protected:
   Parser() {}
