@@ -18,7 +18,6 @@ cc_library(
         "data_parser.h",
         "parser.h",
     ],
-    #copts = ["-Ithird_party/rtklib"],
     deps = [
         ":ins570d_parser",
         "//cyber",
@@ -44,7 +43,6 @@ cc_library(
         "INS570D_Define.h",
         "parser.h",
     ],
-    #copts = ["-Ithird_party/rtklib"],
     deps = [
         "//cyber",
         "//modules/common/adapters:adapter_gflags",
@@ -59,7 +57,6 @@ cc_library(
         "//modules/drivers/gnss/proto:imu_cc_proto",
         "//modules/drivers/gnss/proto:ins_cc_proto",
         "//modules/drivers/gnss/util:gnss_util",
-        #"//third_party/rtklib",
     ],
 )
 

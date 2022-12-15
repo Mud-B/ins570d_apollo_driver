@@ -237,7 +237,7 @@ void Ins570dParser::GetMessage() {
         buffer_.push_back(*data_++);
       else 
         buffer_.clear();
-    } else if (total_length_ > 0) {
+    } else if (buffer_.size() >= 3) {
       if (buffer_.size() < total_length_) {  // Working on body.
         buffer_.push_back(*data_++);
         continue;

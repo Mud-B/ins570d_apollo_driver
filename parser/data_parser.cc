@@ -121,12 +121,8 @@ void DataParser::ParseRawData(const std::string &msg) {
   }
 
   data_parser_->Update(msg);
-  MessagePtr msg_ptr;
-
-  while (cyber::OK()) {
-    data_parser_->GetMessage();
-    DispatchMessage(msg_ptr);
-  }
+  data_parser_->GetMessage();
+  DispatchMessage();
 }
 
 void DataParser::CheckInsStatus(::apollo::drivers::gnss::Ins *ins) {
@@ -172,7 +168,8 @@ void DataParser::CheckGnssStatus(::apollo::drivers::gnss::Gnss *gnss) {
   gnssstatus_writer_->Write(gnss_status_);
 }
 
-void DataParser::DispatchMessage(MessagePtr message) {
+void DataParser::DispatchMessage() {
+  MessagePtr message;
   message = &gnss_;
   CheckGnssStatus(As<::apollo::drivers::gnss::Gnss>(message));
   message = &bestpos_;
