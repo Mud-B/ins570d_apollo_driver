@@ -1,5 +1,5 @@
 #   Intro
-This is the Baidu Apollo gnss driver adapted for using ins570d.
+This is the Baidu Apollo7.0 gnss driver adapted for using ins570d.
 
 ##  About Apollo
 A high performance, flexible architecture which accelerates the development, testing, and deployment of Autonomous Vehicles.[Apollo's Github Repo](https://github.com/ApolloAuto/apollo)
