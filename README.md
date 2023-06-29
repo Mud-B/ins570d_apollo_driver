@@ -5,7 +5,7 @@ This is the Baidu Apollo7.0 gnss driver adapted for using ins570d.
 A high performance, flexible architecture which accelerates the development, testing, and deployment of Autonomous Vehicles.[Apollo's Github Repo](https://github.com/ApolloAuto/apollo)
 
 ##   About ins570d
-A High-precision combined navigation device.    [Documentation Here](http://www.asensing.com/p_box)
+A High-precision combined navigation device.    [Documentation Here]([http://www.asensing.com/p_box](https://www.asensing.com/technical/1))
 
 #   Usage
 This is the hardware connecting diagram, to use this driver wo also need a RS422-USB line added between RS422 port and testing PC.
